@@ -1,5 +1,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h> 
 
 volatile int i = 0;
 volatile boolean cruce_cero = false;
@@ -53,9 +55,15 @@ WiFiInfo networks[NUM_NETWORKS] = {
   {"PANDEMONIUM", "PANDEMONIUM"}
   // Agrega aquí las otras redes Wi-Fi
 };
+#define BOTtoken "6605703445:AAGYnxji-z2lSjjiQc0EJZpn1IyqNMxkX4s" 
+#define CHAT_ID "1172351395"
+WiFiClientSecure client;
+UniversalTelegramBot bot(BOTtoken, client);
 
 WebServer server(80);
 
+int botRequestDelay = 100;
+unsigned long lastTimeBotRan;
 
 void handleRoot() {
   if (server.hasArg("secuencia")) {
@@ -90,15 +98,15 @@ void handleRoot() {
   html += "</style></head><body><div class='center'>";
   html += "<h1>Control de Luces en Bar Barone</h1>";
   html += "<p>Selecciona una secuencia:</p>";
-  html += "<button class='button' onClick=location.href='./?secuencia=1'>Secuencia 1 (Rápida)</button>";
+  html += "<button class='button' onClick=location.href='./?secuencia=1'>Secuencia 1 (Rapida)</button>";
   html += "<button class='button' onClick=location.href='./?secuencia=2'>Secuencia 2 (Lenta)</button>";
   html += "<button class='button' onClick=location.href='./?secuencia=3'>Secuencia 3 (1 x 1 Lenta)</button>";
-  html += "<button class='button' onClick=location.href='./?secuencia=4'>Secuencia 4 (1 x 1 Rápida)</button>";
+  html += "<button class='button' onClick=location.href='./?secuencia=4'>Secuencia 4 (1 x 1 Rapida)</button>";
   html += "<button class='button' onClick=location.href='./?secuencia=5'>Secuencia 5 (Aleatoria)</button>";
   html += "<p>Establece el dimming fijo:</p>";
   html += "<input type='range' min='0' max='100' value='50' class='slider' id='dimSlider'>";
   html += "<button class='button' onClick=location.href='./?dim='+document.getElementById('dimSlider').value>Establecer Dimming</button>";
-  html += "<p>Para más información, contacta al número de WhatsApp: 2920591019</p>";
+  html += "<p>Para mas informacion, contacta al numero de WhatsApp: 2920591019</p>";
   html += "</div></body></html>";
   server.send(200, "text/html", html);
 }
@@ -156,6 +164,7 @@ void IRAM_ATTR Dimer()
 
 void setup() {
   Serial.begin(9600);
+  client.setCACert(TELEGRAM_CERTIFICATE_ROOT);
   delay(10);
 
   for (int i = 0; i < NUM_NETWORKS; i++) {
@@ -189,6 +198,8 @@ void setup() {
   Serial.println("Servidor Iniciado");
   Serial.println("Ingrese desde un navegador web usando la siguiente IP:");
   Serial.println(WiFi.localIP()); //Obtenemos la IP
+  bot.sendMessage(CHAT_ID, "ESP32 conectado a la red WiFi. Dirección IP: " + WiFi.localIP().toString(), "");
+
  
 
 
