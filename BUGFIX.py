@@ -8,29 +8,23 @@ class LightControlApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Light Control Application")
-        self.geometry("800x600")
+        self.geometry("820x650")
 
-        # Ruta de la imagen de fondo
-        self.bg_image_path = "fondo.png"  # Cambia el nombre según la imagen que desees usar
-        
-        # Crear Canvas y configurar la imagen de fondo
-        self.canvas = tk.Canvas(self, width=800, height=600)
+        # Background setup
+        self.bg_image_path = "fondo.png"
+        self.canvas = tk.Canvas(self, width=820, height=650)
         self.canvas.pack(fill="both", expand=True)
-
-        # Cargar y configurar la imagen de fondo
         self.add_background_image()
 
-        # Agregar marco principal sobre el fondo
+        # Main overlay frame
         self.main_frame = tk.Frame(self.canvas, bg="white")
-        self.canvas.create_window((0, 0), window=self.main_frame, anchor="nw", width=800, height=600)
+        self.canvas.create_window((0, 0), window=self.main_frame, anchor="nw", width=820, height=650)
 
-        # Inicializar el texto del banner
-        self.banner_text = "Bienvenido a la aplicación de control de luces! Contacta al 2920591019 para más información."
-
-        # Crear las pestañas de la aplicación
+        self.banner_text = "Bienvenido a la aplicación de control de luces! Contacta al 2920591019"
         self.notebook = ttk.Notebook(self.main_frame)
-        self.notebook.pack(expand=True, fill="both")
+        self.notebook.pack(expand=True, fill="both", pady=10)
 
+        # Build pages
         self.create_main_page()
         self.create_existing_sequences_page()
         self.create_dimming_sequences_page()
@@ -39,248 +33,143 @@ class LightControlApp(tk.Tk):
 
     def add_background_image(self):
         try:
-            # Cargar la imagen
-            bg_image = Image.open(self.bg_image_path)
-            # Redimensionar la imagen para ajustarla al tamaño de la ventana
-            bg_image = bg_image.resize((800, 600), Image.LANCZOS)
-            self.bg_image_tk = ImageTk.PhotoImage(bg_image)
-            # Colocar la imagen en el canvas
+            img = Image.open(self.bg_image_path).resize((820, 650), Image.LANCZOS)
+            self.bg_image_tk = ImageTk.PhotoImage(img)
             self.canvas.create_image(0, 0, anchor="nw", image=self.bg_image_tk)
         except Exception as e:
-            print(f"Error al cargar la imagen de fondo: {e}")
+            print(f"Error cargando fondo: {e}")
+
+    def send_request(self, action, value):
+        ip = self.ip_address.get().strip()
+        if not ip:
+            print("Error: IP no configurada")
+            return
+        url = f"http://{ip}/?{action}={int(value)}"
+        try:
+            r = requests.get(url, timeout=3)
+            print(f"Request {action}={value} -> {r.status_code}")
+        except Exception as e:
+            print(f"Error conexión: {e}")
+
+    def add_slider(self, parent, label_text, initial, action=None, invert=False):
+        ttk.Label(parent, text=label_text + ":", font=("Arial",14,"bold")).pack(pady=5)
+        var = tk.IntVar(value=initial)
+        lbl = ttk.Label(parent, text=f"{label_text} actual: {initial}")
+        lbl.pack(pady=2)
+        def on_slide(val):
+            v = int(float(val))
+            lbl.config(text=f"{label_text} actual: {v}")
+            if action:
+                send_val = 100 - v if invert else v
+                self.send_request(action, send_val)
+        slider = ttk.Scale(parent, from_=0, to=100, variable=var, command=on_slide)
+        slider.pack(pady=5, padx=20, fill='x')
+        return var, lbl
 
     def create_main_page(self):
-        main_frame = ttk.Frame(self.notebook)
-        self.notebook.add(main_frame, text="Principal")
+        f = ttk.Frame(self.notebook)
+        self.notebook.add(f, text="Principal")
+        ttk.Label(f, text="Control de Luces Bar Barone", font=("Arial",18,"bold")).pack(pady=10)
+        ttk.Label(f, text=f"Bahía Blanca: {datetime.now():%Y-%m-%d %H:%M:%S}", font=("Arial",12)).pack()
 
-        ttk.Label(main_frame, text="Control de Luces en Bar Barone", font=("Arial", 18, "bold")).pack(pady=10)
-
-        # Mostrar la fecha y la hora
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        ttk.Label(main_frame, text=f"Bahía Blanca: {current_time}", font=("Arial", 12)).pack(pady=5)
-
-        ttk.Label(main_frame, text="Ingrese la IP del ESP32:", font=("Arial", 14)).pack(pady=10)
+        row = ttk.Frame(f)
+        row.pack(pady=5)
+        ttk.Label(row, text="IP ESP32:", font=("Arial",14)).pack(side="left")
         self.ip_address = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.ip_address).pack(pady=5)
-        ttk.Button(main_frame, text="Guardar IP", command=self.save_ip).pack(pady=5)
+        ttk.Entry(row, textvariable=self.ip_address, width=15).pack(side="left", padx=5)
+        ttk.Button(row, text="Guardar IP", command=self.save_ip).pack(side="left")
+        ttk.Button(row, text="Probar Conexión", command=self.test_connection).pack(side="left", padx=5)
 
-        ttk.Label(main_frame, text="Intensidad Dimming General:", font=("Arial", 14, "bold")).pack(pady=10)
-        self.dim_value = tk.IntVar(value=50)
-        dimming_slider = ttk.Scale(main_frame, from_=0, to=100, variable=self.dim_value, command=self.update_dim_value)
-        dimming_slider.pack(pady=5, padx=20, fill='x')
-        self.dim_value_label = ttk.Label(main_frame, text=f"Valor actual: {self.dim_value.get()}")
-        self.dim_value_label.pack(pady=5)
+        # Dimming General: no invert so slider high -> bright
+        self.add_slider(f, "Dimming General", 80, action="dim", invert=False)
+        # Velocidad: invert so slider high -> faster
+        self.add_slider(f, "Intervalo (velocidad)", 15, action="interval", invert=True)
+        self.add_slider(f, "Dimming Barra", 70, action="dimBarra", invert=False)
 
-        ttk.Label(main_frame, text="Control de Dimming en Barra:", font=("Arial", 14, "bold")).pack(pady=10)
-        self.dim_barra_value = tk.IntVar(value=50)
-        dimming_barra_slider = ttk.Scale(main_frame, from_=0, to=100, variable=self.dim_barra_value, command=self.update_dim_barra_value)
-        dimming_barra_slider.pack(pady=5, padx=20, fill='x')
-        self.dim_barra_value_label = ttk.Label(main_frame, text=f"Valor de dimmer para barra: {self.dim_barra_value.get()}")
-        self.dim_barra_value_label.pack(pady=5)
+        btns = ttk.Frame(f)
+        btns.pack(pady=10)
+        self.btn_encender = ttk.Button(btns, text="Encender", command=lambda: self.send_request("dim", 100))
+        self.btn_apagar = ttk.Button(btns, text="Apagar",  command=lambda: self.send_request("dim", 0))
+        self.btn_encender.pack(side="left", padx=10)
+        self.btn_apagar.pack(side="left", padx=10)
+        self.enable_controls(False)
 
-        ttk.Label(main_frame, text="Opciones Básicas:", font=("Arial", 14, "bold")).pack(pady=10)
-        ttk.Button(main_frame, text="Encender Luces", command=lambda: self.send_request("encender", 1)).pack(pady=5)
-        ttk.Button(main_frame, text="Apagar Luces", command=lambda: self.send_request("apagar", 0)).pack(pady=5)
+        lbl = tk.Label(f, text=self.banner_text, font=("Arial",12,"bold"), fg="blue")
+        lbl.pack(pady=10)
+        self.animate_banner(lbl)
 
-        banner_label = tk.Label(main_frame, text=self.banner_text, font=("Arial", 12, "bold"), foreground="blue")
-        banner_label.pack(pady=10)
-        self.animate_banner(banner_label)
-
-    def create_existing_sequences_page(self):
-        existing_frame = ttk.Frame(self.notebook)
-        self.notebook.add(existing_frame, text="Secuencias Existentes")
-
-        ttk.Label(existing_frame, text="Selecciona una secuencia existente:", font=("Arial", 14, "bold")).pack(pady=10)
-
-        secuencias = [
-            ("Secuencia 1 ......", 1),
-            ("Secuencia 2 ......", 2),
-            ("Secuencia 3 ......", 3),
-            ("Secuencia 4 ......", 4),
-            ("Secuencia 5 ......", 5)
-        ]
-
-        for seq in secuencias:
-            button = ttk.Button(existing_frame, text=seq[0], style='TButton', command=lambda s=seq[1]: self.send_request("secuencia", s))
-            button.pack(pady=5)
-
-        # Controles de velocidad e intensidad
-        ttk.Label(existing_frame, text="Velocidad:", font=("Arial", 14, "bold")).pack(pady=5)
-        self.speed_value = tk.IntVar(value=50)
-        speed_slider = ttk.Scale(existing_frame, from_=0, to=100, variable=self.speed_value, command=self.update_speed_value)
-        speed_slider.pack(pady=5, padx=20, fill='x')
-        self.speed_value_label = ttk.Label(existing_frame, text=f"Velocidad actual: {self.speed_value.get()}")
-        self.speed_value_label.pack(pady=5)
-
-        ttk.Label(existing_frame, text="Intensidad:", font=("Arial", 14, "bold")).pack(pady=5)
-        self.intensity_value = tk.IntVar(value=50)
-        intensity_slider = ttk.Scale(existing_frame, from_=0, to=100, variable=self.intensity_value, command=self.update_intensity_value)
-        intensity_slider.pack(pady=5, padx=20, fill='x')
-        self.intensity_value_label = ttk.Label(existing_frame, text=f"Intensidad actual: {self.intensity_value.get()}")
-        self.intensity_value_label.pack(pady=5)
-
-        # Banner con movimiento
-        banner_label = tk.Label(existing_frame, text=self.banner_text, font=("Arial", 12, "bold"), foreground="blue")
-        banner_label.pack(pady=10)
-        self.animate_banner(banner_label)
-
-    def create_dimming_sequences_page(self):
-        dimming_frame = ttk.Frame(self.notebook)
-        self.notebook.add(dimming_frame, text="Secuencias con Dimming")
-
-        ttk.Label(dimming_frame, text="Selecciona una secuencia con dimming:", font=("Arial", 14, "bold")).pack(pady=10)
-
-        secuencias_dimming = [
-            ("Secuencia 1 Dimming ......", 10),
-            ("Secuencia 2 Dimming ......", 11),
-            ("Secuencia 3 Dimming ......", 12),
-            ("Secuencia 4 Dimming ......", 13),
-            ("Secuencia 5 Dimming ......", 14)
-        ]
-
-        for seq in secuencias_dimming:
-            button = ttk.Button(dimming_frame, text=seq[0], style='TButton', command=lambda s=seq[1]: self.send_request("secuencia", s))
-            button.pack(pady=5)
-
-        # Controles de velocidad e intensidad
-        ttk.Label(dimming_frame, text="Velocidad:", font=("Arial", 14, "bold")).pack(pady=5)
-        self.speed_value = tk.IntVar(value=50)
-        speed_slider = ttk.Scale(dimming_frame, from_=0, to=100, variable=self.speed_value, command=self.update_speed_value)
-        speed_slider.pack(pady=5, padx=20, fill='x')
-        self.speed_value_label = ttk.Label(dimming_frame, text=f"Velocidad actual: {self.speed_value.get()}")
-        self.speed_value_label.pack(pady=5)
-
-        ttk.Label(dimming_frame, text="Intensidad:", font=("Arial", 14, "bold")).pack(pady=5)
-        self.intensity_value = tk.IntVar(value=50)
-        intensity_slider = ttk.Scale(dimming_frame, from_=0, to=100, variable=self.intensity_value, command=self.update_intensity_value)
-        intensity_slider.pack(pady=5, padx=20, fill='x')
-        self.intensity_value_label = ttk.Label(dimming_frame, text=f"Intensidad actual: {self.intensity_value.get()}")
-        self.intensity_value_label.pack(pady=5)
-
-        # Banner con movimiento
-        banner_label = tk.Label(dimming_frame, text=self.banner_text, font=("Arial", 12, "bold"), foreground="blue")
-        banner_label.pack(pady=10)
-        self.animate_banner(banner_label)
-
-    def create_color_sequences_page(self):
-        color_frame = ttk.Frame(self.notebook)
-        self.notebook.add(color_frame, text="Secuencias con Colores")
-
-        ttk.Label(color_frame, text="Selecciona una secuencia con colores:", font=("Arial", 14, "bold")).pack(pady=10)
-
-        secuencias_colores = [
-            ("Secuencia 1 Colores ......", 20),
-            ("Secuencia 2 Colores ......", 21),
-            ("Secuencia 3 Colores ......", 22),
-            ("Secuencia 4 Colores ......", 23),
-            ("Secuencia 5 Colores ......", 24)
-        ]
-
-        for seq in secuencias_colores:
-            button = ttk.Button(color_frame, text=seq[0], style='TButton', command=lambda s=seq[1]: self.send_request("secuencia", s))
-            button.pack(pady=5)
-
-        # Controles de velocidad e intensidad
-        ttk.Label(color_frame, text="Velocidad:", font=("Arial", 14, "bold")).pack(pady=5)
-        self.speed_value = tk.IntVar(value=50)
-        speed_slider = ttk.Scale(color_frame, from_=0, to=100, variable=self.speed_value, command=self.update_speed_value)
-        speed_slider.pack(pady=5, padx=20, fill='x')
-        self.speed_value_label = ttk.Label(color_frame, text=f"Velocidad actual: {self.speed_value.get()}")
-        self.speed_value_label.pack(pady=5)
-
-        ttk.Label(color_frame, text="Intensidad:", font=("Arial", 14, "bold")).pack(pady=5)
-        self.intensity_value = tk.IntVar(value=50)
-        intensity_slider = ttk.Scale(color_frame, from_=0, to=100, variable=self.intensity_value, command=self.update_intensity_value)
-        intensity_slider.pack(pady=5, padx=20, fill='x')
-        self.intensity_value_label = ttk.Label(color_frame, text=f"Intensidad actual: {self.intensity_value.get()}")
-        self.intensity_value_label.pack(pady=5)
-
-        # Banner con movimiento
-        banner_label = tk.Label(color_frame, text=self.banner_text, font=("Arial", 12, "bold"), foreground="blue")
-        banner_label.pack(pady=10)
-        self.animate_banner(banner_label)
-
-    def create_info_page(self):
-        info_frame = ttk.Frame(self.notebook)
-        self.notebook.add(info_frame, text="Info")
-
-        ttk.Label(info_frame, text="Información sobre el control de luces:", font=("Arial", 14, "bold")).pack(pady=10)
-
-        info_text = (
-            "Esta aplicación permite el control de las luces del Bar Barone. "
-            "Puedes seleccionar secuencias de iluminación existentes, ajustar la intensidad "
-            "del dimming, y controlar las luces de manera individual o en barra. "
-            "Para más información, contacta al 2920591019."
-        )
-
-        ttk.Label(info_frame, text=info_text, wraplength=750).pack(pady=10)
-
-        # Banner con movimiento
-        banner_label = tk.Label(info_frame, text=self.banner_text, font=("Arial", 12, "bold"), foreground="blue")
-        banner_label.pack(pady=10)
-        self.animate_banner(banner_label)
-
-    def update_dim_value(self, event):
-        self.dim_value_label.config(text=f"Valor actual: {self.dim_value.get()}")
-
-    def update_dim_barra_value(self, event):
-        self.dim_barra_value_label.config(text=f"Valor de dimmer para barra: {self.dim_barra_value.get()}")
-
-    def update_speed_value(self, event):
-        self.speed_value_label.config(text=f"Velocidad actual: {self.speed_value.get()}")
-
-    def update_intensity_value(self, event):
-        self.intensity_value_label.config(text=f"Intensidad actual: {self.intensity_value.get()}")
-    # Modificar la función send_request
-# Función send_request CORREGIDA
-    def send_request(self, action, value):
-        try:
-            ip = self.ip_address.get().strip()
-            if not ip:
-                print("Error: IP no configurada")
-                return
-                
-            # Construir URL correctamente con parámetros GET
-            url = f"http://{ip}/?{action}={value}"  # <--- Cambio clave aquí
-            
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            response = requests.get(url, headers=headers, timeout=5)
-            
-            if response.status_code == 200:
-                print(f"Éxito! Secuencia {value} activada")
-            else:
-                print(f"Error HTTP: {response.status_code}")
-                
-        except Exception as e:
-            print(f"Error de conexión: {str(e)}")
-
-    # Modificar el botón de guardar IP
     def save_ip(self):
         ip = self.ip_address.get().strip()
-        
-        # Validación básica de IP
-        if len(ip.split('.')) != 4 or not all(part.isdigit() for part in ip.split('.')):
-            print("Error: Formato de IP inválido")
+        parts = ip.split('.')
+        if len(parts)==4 and all(p.isdigit() and 0<=int(p)<=255 for p in parts):
+            print(f"IP válida guardada: {ip}")
+            self.enable_controls(True)
+        else:
+            print("IP inválida")
+
+    def test_connection(self):
+        ip = self.ip_address.get().strip()
+        if not ip:
+            print("Error: IP no configurada")
             return
-        
-        self.ip_address.set(ip)
-        print(f"IP válida guardada: {ip}")
-        self.enable_controls(True)  # Habilitar controles solo con IP válida
+        url = f"http://{ip}/"
+        try:
+            r = requests.get(url, timeout=3)
+            print(f"Test conexión {url} -> {r.status_code}")
+        except Exception as e:
+            print(f"Fallo test conexión: {e}")
 
-    def enable_controls(self, enabled):
-        state = "normal" if enabled else "disabled"
-        for btn in [self.btn_encender, self.btn_apagar]:
-            btn.config(state=state)
+    def create_existing_sequences_page(self):
+        f = ttk.Frame(self.notebook)
+        self.notebook.add(f, text="Secuencias Existentes")
+        ttk.Label(f, text="Secuencias:", font=("Arial",14,"bold")).pack(pady=5)
+        for i in range(1,6):
+            ttk.Button(f, text=f"Secuencia {i}", command=lambda v=i: self.send_request("secuencia", v)).pack(pady=2)
+        # Velocidad invertida, Intensidad invertida to match hardware
+        self.add_slider(f, "Velocidad", 50, action="interval", invert=True)
+        self.add_slider(f, "Intensidad", 50, action="dimValue", invert=True)
+        lbl = tk.Label(f, text=self.banner_text, font=("Arial",12,"bold"), fg="blue")
+        lbl.pack(pady=10)
+        self.animate_banner(lbl)
 
-    def animate_banner(self, label):
-        def marquee():
-            text = label.cget("text")
-            text = text[1:] + text[0]
-            label.config(text=text)
-            label.after(200, marquee)
+    def create_dimming_sequences_page(self):
+        f = ttk.Frame(self.notebook)
+        self.notebook.add(f, text="Secuencias Dimming")
+        for i in range(10,15):
+            ttk.Button(f, text=f"Secuencia {i}", command=lambda v=i: self.send_request("secuencia", v)).pack(pady=2)
+        self.add_slider(f, "Velocidad", 50, action="interval", invert=True)
+        self.add_slider(f, "Intensidad", 50, action="dimValue", invert=True)
+        lbl = tk.Label(f, text=self.banner_text, font=("Arial",12,"bold"), fg="blue")
+        lbl.pack(pady=10)
+        self.animate_banner(lbl)
 
-        marquee()
+    def create_color_sequences_page(self):
+        f = ttk.Frame(self.notebook)
+        self.notebook.add(f, text="Secuencias Colores")
+        for i in range(20,25):
+            ttk.Button(f, text=f"Secuencia {i}", command=lambda v=i: self.send_request("secuencia", v)).pack(pady=2)
+        self.add_slider(f, "Velocidad", 50, action="interval", invert=True)
+        self.add_slider(f, "Intensidad", 50, action="dimValue", invert=True)
+        lbl = tk.Label(f, text=self.banner_text, font=("Arial",12,"bold"), fg="blue")
+        lbl.pack(pady=10)
+        self.animate_banner(lbl)
+
+    def create_info_page(self):
+        f = ttk.Frame(self.notebook)
+        self.notebook.add(f, text="Info")
+        txt = "Control de luces Bar Barone. Ajusta secuencias, dimming y velocidad. Para ayuda: 2920591019."
+        ttk.Label(f, text=txt, wraplength=700).pack(pady=10)
+
+    def enable_controls(self, ena):
+        state = "normal" if ena else "disabled"
+        for w in (self.btn_encender, self.btn_apagar):
+            w.config(state=state)
+
+    def animate_banner(self, lbl):
+        def m():
+            lbl.config(text=lbl.cget("text")[1:]+lbl.cget("text")[0])
+            lbl.after(200,m)
+        m()
 
 if __name__ == "__main__":
-    app = LightControlApp()
-    app.mainloop()
+    LightControlApp().mainloop()
